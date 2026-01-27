@@ -515,9 +515,18 @@ const ETF_DB = {
                     const savedContents = await IDB.get('wb_contents_v41');
                     const savedImages = await IDB.get('wb_images_v41');
                     
-                    // DB에 데이터가 있으면 사용
-                    if (savedContents && Object.keys(savedContents).length > 1) {
-                        console.log('✅ IndexedDB에서 데이터 로드 성공');
+                    console.log('🔍 IndexedDB 확인:', {
+                        savedData: savedData ? '있음' : '없음',
+                        savedContents: savedContents ? `있음 (${Object.keys(savedContents).length}개)` : '없음',
+                        savedImages: savedImages ? `있음 (${Object.keys(savedImages).length}개)` : '없음'
+                    });
+                    
+                    // [수정됨] DB에 데이터가 있으면 사용 (조건 완화)
+                    const hasContents = savedContents && Object.keys(savedContents).length > 0;
+                    const hasImages = savedImages && Object.keys(savedImages).length > 0;
+                    
+                    if (hasContents || hasImages) {
+                        console.log('✅ IndexedDB에서 데이터 로드 성공!');
                         if (savedData) {
                             console.log('📊 savedData 병합 시작');
                             setUserData(prev => {
@@ -526,8 +535,14 @@ const ETF_DB = {
                                 return merged;
                             });
                         }
-                        if (savedContents) setContents(savedContents);
-                        if (savedImages) setImageUrls(savedImages);
+                        if (savedContents) {
+                            console.log('📝 contents 로드:', Object.keys(savedContents).length, '개');
+                            setContents(savedContents);
+                        }
+                        if (savedImages) {
+                            console.log('🖼️ images 로드:', Object.keys(savedImages).length, '개');
+                            setImageUrls(savedImages);
+                        }
                         setAutoLoadStatus('success');
                         setIsLoaded(true);
                         return; // DB에서 로드 성공하면 종료
