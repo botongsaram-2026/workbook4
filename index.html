@@ -328,7 +328,7 @@
                         }
                     });
                     
-                    // 전역 변수에  저장
+                    // 전역 변수에 저장
                     window.EMBEDDED_DATA = { imageUrls, contents };
                     
                     // IndexedDB에도 저장
@@ -600,26 +600,31 @@ const ETF_DB = {
                         return; // DB에서 로드 성공하면 종료
                     }
                     
-                    // 2. IndexedDB에 데이터가 없으면 EMBEDDED_DATA 확인
-                    if (EMBEDDED_DATA && (EMBEDDED_DATA.contents || EMBEDDED_DATA.imageUrls)) {
+                    // 2. IndexedDB에 데이터가 없으면 EMBEDDED_DATA 확인 (window에서 동적으로 가져오기!)
+                    const currentEmbeddedData = window.EMBEDDED_DATA || EMBEDDED_DATA;
+                    
+                    if (currentEmbeddedData && (currentEmbeddedData.contents || currentEmbeddedData.imageUrls)) {
                         console.log('ℹ️ IndexedDB 비어있음. EMBEDDED_DATA(ZIP) 사용');
+                        console.log('📦 currentEmbeddedData:', currentEmbeddedData);
                         
-                        if (EMBEDDED_DATA.userData) {
-                            setUserData(prev => ({ ...DEFAULT_USER_DATA, ...prev, ...EMBEDDED_DATA.userData }));
+                        if (currentEmbeddedData.userData) {
+                            setUserData(prev => ({ ...DEFAULT_USER_DATA, ...prev, ...currentEmbeddedData.userData }));
                         }
                         
-                        const imgUrls = EMBEDDED_DATA.imageUrls || {};
+                        const imgUrls = currentEmbeddedData.imageUrls || {};
                         
                         // 이미지 먼저 설정
-                        if (EMBEDDED_DATA.imageUrls) {
+                        if (currentEmbeddedData.imageUrls) {
+                            console.log('🖼️ ZIP 이미지 설정:', Object.keys(imgUrls).length, '개');
                             setImageUrls(imgUrls);
                         }
                         
                         // contents를 HTML로 포맷팅
-                        if (EMBEDDED_DATA.contents) {
+                        if (currentEmbeddedData.contents) {
+                            console.log('📝 ZIP 콘텐츠 포맷팅 시작:', Object.keys(currentEmbeddedData.contents).length, '단계');
                             const formattedContents = {};
-                            Object.keys(EMBEDDED_DATA.contents).forEach(key => {
-                                const item = EMBEDDED_DATA.contents[key];
+                            Object.keys(currentEmbeddedData.contents).forEach(key => {
+                                const item = currentEmbeddedData.contents[key];
                                 if (item && item.content) {
                                     formattedContents[key] = {
                                         title: item.title,
@@ -628,10 +633,12 @@ const ETF_DB = {
                                 }
                             });
                             setContents(formattedContents);
+                            console.log('✅ 포맷팅 완료, IndexedDB에 저장 중...');
                             
                             // IndexedDB에 포맷팅된 버전 저장
                             await IDB.put('wb_contents_v41', formattedContents);
                             await IDB.put('wb_images_v41', imgUrls);
+                            console.log('💾 IndexedDB 저장 완료!');
                         }
                         
                         setAutoLoadStatus('success');
