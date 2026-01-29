@@ -260,8 +260,8 @@
         }
     }
 
-    // 초기화 - 페이지 로드 시 자동 실행
-    (async function initData() {
+    // 초기화 - 비밀번호 인증 후 실행
+    async function initData() {
         // 로컬 파일인지 확인 (file:// 프로토콜)
         const isLocalFile = window.location.protocol === 'file:';
         
@@ -342,7 +342,7 @@
                 }
             }
         }
-    })();
+    }
     /*__DATA_END__*/
 
     const IDB_NAME = 'WorkbookDB_v1';
@@ -600,7 +600,7 @@ const ETF_DB = {
                         return; // DB에서 로드 성공하면 종료
                     }
                     
-                    // 2. IndexedDB에 데이터가 없으면 EMBEDDED_DATA 확인 (window에서 동적으로 가져오기!)
+                    // 2. IndexedDB에 데이터가 없으면 EMBEDDED_DATA 확인
                     const currentEmbeddedData = window.EMBEDDED_DATA || EMBEDDED_DATA;
                     
                     if (currentEmbeddedData && (currentEmbeddedData.contents || currentEmbeddedData.imageUrls)) {
@@ -4629,6 +4629,8 @@ const App = () => {
         const [isAuthenticated, setIsAuthenticated] = React.useState(false);
         const [inputPw, setInputPw] = React.useState("");
         const [errorMsg, setErrorMsg] = React.useState("");
+        const [isDataLoading, setIsDataLoading] = React.useState(false);
+        const [dataLoadError, setDataLoadError] = React.useState("");
 
         console.log("🔐 App 렌더링, isAuthenticated:", isAuthenticated);
         console.log("🔐 LOCKED_PASSWORD:", LOCKED_PASSWORD);
@@ -4669,6 +4671,28 @@ const App = () => {
             }
         }, [hasPassword]);
 
+        // 인증 후 데이터 로딩
+        React.useEffect(() => {
+            if (isAuthenticated && !isDataLoading && !window.EMBEDDED_DATA) {
+                console.log("📦 인증 완료! 데이터 로딩 시작...");
+                setIsDataLoading(true);
+                
+                initData()
+                    .then(() => {
+                        console.log("✅ 데이터 로딩 완료!");
+                        setIsDataLoading(false);
+                    })
+                    .catch(err => {
+                        console.error("❌ 데이터 로딩 실패:", err);
+                        setDataLoadError("데이터를 불러오는데 실패했습니다.");
+                        setIsDataLoading(false);
+                    });
+            } else if (isAuthenticated && window.EMBEDDED_DATA) {
+                console.log("✅ 데이터 이미 로드됨!");
+                setIsDataLoading(false);
+            }
+        }, [isAuthenticated]);
+
         // 비밀번호 확인 화면
         if (!isAuthenticated && hasPassword) {
             console.log("🔒 비밀번호 화면 표시");
@@ -4693,6 +4717,30 @@ const App = () => {
                                 잠금 해제
                             </button>
                         </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // 데이터 로딩 화면
+        if (isDataLoading) {
+            console.log("⏳ 데이터 로딩 화면 표시");
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                    <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-4 border-blue-200">
+                        <div className="text-6xl mb-4 animate-bounce">📦</div>
+                        <h2 className="text-2xl font-black text-slate-800 mb-2">데이터 로딩 중...</h2>
+                        <p className="text-slate-500 mb-4 text-sm">워크북 데이터를 불러오고 있습니다.</p>
+                        <div className="flex justify-center items-center space-x-2">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                        </div>
+                        {dataLoadError && (
+                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                                {dataLoadError}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
