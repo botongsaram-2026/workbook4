@@ -260,6 +260,62 @@
         }
     }
 
+    // [전역] 텍스트 포맷팅 함수 (초강력 이미지 매칭 + 진단 표시)
+    const formatTextToHtml = (text, imgMap) => {
+        let html = text.replace(/\r\n/g, "\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+        // 이미지 치환 (확장자, 공백 무시하고 이름만 같으면 매칭)
+        html = html.replace(/\[이미지:(.*?)\]/g, (m, f) => { 
+            const rawName = f.trim();
+            // 비교를 위해 이름에서 확장자(.jpg 등)와 공백을 모두 제거하고 소문자로 변환
+            const cleanTarget = rawName.replace(/\.[^/.]+$/, "").replace(/\s/g, "").toLowerCase();
+            
+            const uploadedFiles = Object.keys(imgMap);
+            
+            // 업로드된 파일들 중에서 '핵심 이름'이 같은 것을 찾음
+            const matchedKey = uploadedFiles.find(key => {
+                const cleanKey = key.replace(/\.[^/.]+$/, "").replace(/\s/g, "").toLowerCase();
+                return cleanKey === cleanTarget;
+            });
+
+            if (matchedKey) {
+                return `<img src="${imgMap[matchedKey]}" alt="${rawName}" class="mx-auto rounded-lg shadow-md my-8 transition-transform hover:scale-[1.02]" style="max-height: 500px; width: auto;" />`;
+            } else {
+                // 못 찾았을 때 나오는 진단 박스
+                return `
+                    <div class="text-red-500 border-2 border-red-300 bg-red-50 p-4 rounded-lg text-center my-6 text-sm">
+                        <strong class="text-lg block mb-2">⚠️ 이미지를 못 찾았습니다</strong>
+                        <div class="text-left bg-white p-2 rounded border text-slate-600 mb-2">
+                            <div>📝 <strong>원고에 적은 것:</strong> ${rawName}</div>
+                            <div>🔍 <strong>찾는 핵심 단어:</strong> ${cleanTarget}</div>
+                        </div>
+                        <div class="text-left bg-blue-50 p-2 rounded border text-blue-800">
+                            <div>📂 <strong>현재 저장된 이미지 목록 (${uploadedFiles.length}장):</strong></div>
+                            <div class="text-xs mt-1 break-all">${uploadedFiles.length > 0 ? uploadedFiles.join(', ') : '(없음. 업로드 시 사진을 같이 선택해주세요!)'}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+
+        // 링크, 제목, 스타일 등 나머지 변환 로직
+        html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" class="text-blue-600 underline decoration-2 hover:text-blue-800 font-bold transition-colors">$1</a>');
+        html = html.replace(/(^|\n)!!![ \t]+(.*)/g, '\n<h1 class="text-3xl md:text-4xl font-black text-slate-900 mt-12 mb-8 pb-4 border-b-4 border-blue-500 leading-tight">$2</h1>\n');
+        html = html.replace(/(^|\n)(##|¶)[ \t]+(.*)/g, '\n<h2 class="text-2xl md:text-3xl font-bold text-slate-800 mt-10 mb-5 pl-4 border-l-8 border-blue-600 leading-snug">$3</h2>\n');
+        html = html.replace(/(^|\n)(###|■)[ \t]+(.*)/g, '\n<h3 class="text-xl font-bold text-indigo-700 mt-8 mb-3 flex items-center gap-2"><span class="text-indigo-400 text-sm">●</span> $3</h3>\n');
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700 font-extrabold bg-blue-50 px-1 py-0.5 rounded border border-blue-100">$1</strong>');
+        html = html.replace(/\^\^(.*?)\^\^/g, '<span class="bg-yellow-200 text-yellow-900 px-1 py-0.5 rounded font-bold shadow-sm" style="box-decoration-break: clone;">$1</span>');
+        html = html.replace(/(^|\n)-[ \t]+(.*)/g, '\n<li class="mb-2 text-lg text-slate-700 pl-2 border-l-2 border-slate-200 hover:border-blue-400 transition-colors">$2</li>\n');
+
+        return html.split(/\n\s*\n/).map(p => {
+            const t = p.trim(); 
+            if(!t) return "";
+            if(t.startsWith('<h') || t.startsWith('<img') || t.startsWith('<div')) return t;
+            if(t.startsWith('<li')) return `<ul class="list-none my-6 space-y-1">${t}</ul>`;
+            return `<p class="text-lg leading-relaxed text-slate-700 mb-6 text-justify break-keep font-medium">${t.replace(/\n/g, '<br>')}</p>`;
+        }).join('');
+    };
+
     // 초기화 - 비밀번호 인증 후 실행
     async function initData() {
         // 로컬 파일인지 확인 (file:// 프로토콜)
@@ -4722,25 +4778,21 @@ const App = () => {
             );
         }
 
-        // 데이터 로딩 화면
-        if (isDataLoading) {
-            console.log("⏳ 데이터 로딩 화면 표시");
+
+        // EMBEDDED_DATA 로딩 완료 대기
+        if (!window.EMBEDDED_DATA) {
+            console.log("⏳ EMBEDDED_DATA 로딩 대기 중...");
             return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
                     <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-4 border-blue-200">
-                        <div className="text-6xl mb-4 animate-bounce">📦</div>
-                        <h2 className="text-2xl font-black text-slate-800 mb-2">데이터 로딩 중...</h2>
+                        <div className="text-6xl mb-4 animate-bounce">⏳</div>
+                        <h2 className="text-2xl font-black text-slate-800 mb-2">데이터 준비 중...</h2>
                         <p className="text-slate-500 mb-4 text-sm">워크북 데이터를 불러오고 있습니다.</p>
                         <div className="flex justify-center items-center space-x-2">
                             <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
                             <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
                             <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
                         </div>
-                        {dataLoadError && (
-                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-                                {dataLoadError}
-                            </div>
-                        )}
                     </div>
                 </div>
             );
@@ -4749,6 +4801,7 @@ const App = () => {
         // 워크북 표시
         console.log("📚 워크북 렌더링 시작");
         console.log("📚 Workbook 컴포넌트 존재 여부:", typeof Workbook);
+        console.log("📚 EMBEDDED_DATA 확인 완료!");
         
         if (typeof Workbook === 'undefined') {
             console.error("❌ Workbook 컴포넌트가 정의되지 않았습니다!");
