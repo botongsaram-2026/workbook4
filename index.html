@@ -1220,11 +1220,26 @@ const ETF_DB = {
                 }
             }, 100);
         };
-const handleReset = () => { 
-    if(confirm("모든 데이터를 지우고 처음 상태로 돌아가시겠습니까?")) { 
-        setUserData(DEFAULT_USER_DATA); // 여기가 핵심! 빈 값이 아니라 기본값으로 되돌림
-        setCurrentStep(0); 
-        window.scrollTo(0,0);
+const handleReset = async () => { 
+    if(confirm("모든 데이터를 지우고 처음 상태로 돌아가시겠습니까?\n\n⚠️ IndexedDB에 저장된 모든 데이터(업로드한 이미지, 텍스트, 입력값)가 삭제되고,\n워크북이 처음 상태로 되돌아갑니다.")) { 
+        try {
+            // IndexedDB 전체 삭제
+            await IDB.put('wb_data_v41', null);
+            await IDB.put('wb_contents_v41', null);
+            await IDB.put('wb_images_v41', null);
+            
+            // 상태 초기화
+            setUserData(DEFAULT_USER_DATA);
+            setContents({});
+            setImageUrls({});
+            setCurrentStep(0); 
+            window.scrollTo(0,0);
+            
+            alert("✅ 초기화 완료!\n페이지를 새로고침합니다.");
+            location.reload();
+        } catch(err) {
+            alert("❌ 초기화 실패: " + err.message);
+        }
     } 
 };
         
@@ -4779,9 +4794,9 @@ const App = () => {
         }
 
 
-        // EMBEDDED_DATA 로딩 완료 대기
-        if (!window.EMBEDDED_DATA) {
-            console.log("⏳ EMBEDDED_DATA 로딩 대기 중...");
+        // EMBEDDED_DATA 로딩 완료 대기 (isDataLoading도 함께 확인)
+        if (isDataLoading || !window.EMBEDDED_DATA) {
+            console.log("⏳ 데이터 로딩 대기 중... isDataLoading:", isDataLoading, "EMBEDDED_DATA:", !!window.EMBEDDED_DATA);
             return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
                     <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-4 border-blue-200">
@@ -4793,6 +4808,11 @@ const App = () => {
                             <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
                             <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
                         </div>
+                        {dataLoadError && (
+                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                                {dataLoadError}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
