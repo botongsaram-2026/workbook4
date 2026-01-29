@@ -502,15 +502,13 @@ const ETF_DB = {
         const [isLoaded, setIsLoaded] = useState(!!EMBEDDED_DATA);
         const [autoLoadStatus, setAutoLoadStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error' 
 
-        // [수정됨] 자동 데이터 로딩 (DB 우선, ZIP 후순위)
+        // [수정됨] 자동 데이터 로딩 (IndexedDB 최우선, 그 다음 EMBEDDED_DATA, 마지막 ZIP)
         useEffect(() => {
-            if (EMBEDDED_DATA) return;
-            
             const autoLoad = async () => {
                 setAutoLoadStatus('loading');
                 
                 try {
-                    // 1. 먼저 IndexedDB 확인
+                    // 1. 먼저 IndexedDB 확인 (사용자 업로드 데이터 우선!)
                     const savedData = await IDB.get('wb_data_v41');
                     const savedContents = await IDB.get('wb_contents_v41');
                     const savedImages = await IDB.get('wb_images_v41');
@@ -521,12 +519,12 @@ const ETF_DB = {
                         savedImages: savedImages ? `있음 (${Object.keys(savedImages).length}개)` : '없음'
                     });
                     
-                    // [수정됨] DB에 데이터가 있으면 사용 (조건 완화)
+                    // [핵심 수정] DB에 데이터가 있으면 사용 (EMBEDDED_DATA보다 우선!)
                     const hasContents = savedContents && Object.keys(savedContents).length > 0;
                     const hasImages = savedImages && Object.keys(savedImages).length > 0;
                     
                     if (hasContents || hasImages) {
-                        console.log('✅ IndexedDB에서 데이터 로드 성공!');
+                        console.log('✅ IndexedDB에서 사용자 업로드 데이터 발견! (EMBEDDED_DATA 무시)');
                         if (savedData) {
                             console.log('📊 savedData 병합 시작');
                             setUserData(prev => {
@@ -548,8 +546,25 @@ const ETF_DB = {
                         return; // DB에서 로드 성공하면 종료
                     }
                     
-                    // 2. DB에 데이터가 없으면 ZIP 파일 시도
-                    console.log('ℹ️ IndexedDB에 데이터 없음. ZIP 파일 확인 중...');
+                    // 2. IndexedDB에 데이터가 없으면 EMBEDDED_DATA 확인
+                    if (EMBEDDED_DATA) {
+                        console.log('ℹ️ IndexedDB 비어있음. EMBEDDED_DATA 사용');
+                        if (EMBEDDED_DATA.userData) {
+                            setUserData(prev => ({ ...DEFAULT_USER_DATA, ...prev, ...EMBEDDED_DATA.userData }));
+                        }
+                        if (EMBEDDED_DATA.contents) {
+                            setContents(EMBEDDED_DATA.contents);
+                        }
+                        if (EMBEDDED_DATA.imageUrls) {
+                            setImageUrls(EMBEDDED_DATA.imageUrls);
+                        }
+                        setAutoLoadStatus('success');
+                        setIsLoaded(true);
+                        return;
+                    }
+                    
+                    // 3. IndexedDB도 EMBEDDED_DATA도 없으면 ZIP 파일 시도
+                    console.log('ℹ️ IndexedDB와 EMBEDDED_DATA 모두 없음. ZIP 파일 확인 중...');
                     const response = await fetch('./workbook-data.zip');
                     if (!response.ok) throw new Error('ZIP 파일을 찾을 수 없습니다');
                     
