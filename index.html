@@ -267,24 +267,78 @@
         
         if (!EMBEDDED_DATA) {
             if (isLocalFile) {
-                console.log('⚠️ 로컬 파일 모드: 데이터를 로드할 수 없습니다. IndexedDB에서 불러옵니다.');
-                // 로컬에서는 fetch 불가능, IndexedDB 또는 빈 데이터 사용
+                console.log('⚠️ 로컬 파일 모드: IndexedDB에서 불러옵니다.');
                 window.EMBEDDED_DATA = { imageUrls: {}, contents: {} };
             } else {
-                console.log('📂 GitHub에서 이미지와 텍스트 로딩 중...');
-                const imageUrls = await loadGitHubImages();
-                const contents = await loadLectureText();
-                
-                // 전역 변수에 저장
-                window.EMBEDDED_DATA = { imageUrls, contents };
-                
-                // IndexedDB에도 저장
+                console.log('📦 workbook-data.zip 로딩 시작...');
                 try {
+                    const response = await fetch('./workbook-data.zip');
+                    if (!response.ok) throw new Error('ZIP 파일을 찾을 수 없습니다');
+                    
+                    const blob = await response.blob();
+                    const arrayBuffer = await blob.arrayBuffer();
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+                    
+                    const imageUrls = {};
+                    const textContents = [];
+                    
+                    // ZIP 파일 내용 추출
+                    for (const [filename, file] of Object.entries(zip.files)) {
+                        if (file.dir) continue;
+                        
+                        // 이미지 파일 처리
+                        if (/\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(filename)) {
+                            const blob = await file.async('blob');
+                            const reader = new FileReader();
+                            await new Promise((resolve) => {
+                                reader.onload = (e) => {
+                                    const fileName = filename.split('/').pop().split('\\').pop();
+                                    imageUrls[fileName] = e.target.result;
+                                    resolve();
+                                };
+                                reader.readAsDataURL(blob);
+                            });
+                        }
+                        // 텍스트 파일 처리
+                        else if (filename.toLowerCase().endsWith('.txt')) {
+                            const content = await file.async('text');
+                            textContents.push(content);
+                        }
+                    }
+                    
+                    // 텍스트를 단계별로 파싱
+                    const contents = {};
+                    textContents.forEach(text => {
+                        const sections = text.split(/\[\s*(\d+)\s*단계\s*\]|\[\s*(Intro|0)\s*\]/i);
+                        
+                        for (let i = 1; i < sections.length; i += 3) {
+                            const marker = sections[i] || sections[i + 1];
+                            const content = sections[i + 2];
+                            let idx = -1;
+                            
+                            if (marker && (marker.toLowerCase().includes('intro') || marker === '0')) {
+                                idx = 0;
+                            } else if (marker) {
+                                idx = parseInt(marker);
+                            }
+                            
+                            if (idx >= 0 && content) {
+                                contents[idx] = { title: `${idx}단계`, content: content.trim() };
+                            }
+                        }
+                    });
+                    
+                    // 전역 변수에 저장
+                    window.EMBEDDED_DATA = { imageUrls, contents };
+                    
+                    // IndexedDB에도 저장
                     await IDB.put('wb_images_v41', imageUrls);
                     await IDB.put('wb_contents_v41', contents);
-                    console.log('✅ 이미지 ' + Object.keys(imageUrls).length + '개, 텍스트 ' + Object.keys(contents).length + '단계 로드 완료!');
+                    
+                    console.log('✅ ZIP 로드 완료! 이미지:', Object.keys(imageUrls).length, '개, 텍스트:', Object.keys(contents).length, '단계');
                 } catch (err) {
-                    console.error('❌ 저장 실패:', err);
+                    console.error('❌ ZIP 로드 실패:', err);
+                    window.EMBEDDED_DATA = { imageUrls: {}, contents: {} };
                 }
             }
         }
@@ -547,17 +601,39 @@ const ETF_DB = {
                     }
                     
                     // 2. IndexedDB에 데이터가 없으면 EMBEDDED_DATA 확인
-                    if (EMBEDDED_DATA) {
-                        console.log('ℹ️ IndexedDB 비어있음. EMBEDDED_DATA 사용');
+                    if (EMBEDDED_DATA && (EMBEDDED_DATA.contents || EMBEDDED_DATA.imageUrls)) {
+                        console.log('ℹ️ IndexedDB 비어있음. EMBEDDED_DATA(ZIP) 사용');
+                        
                         if (EMBEDDED_DATA.userData) {
                             setUserData(prev => ({ ...DEFAULT_USER_DATA, ...prev, ...EMBEDDED_DATA.userData }));
                         }
-                        if (EMBEDDED_DATA.contents) {
-                            setContents(EMBEDDED_DATA.contents);
-                        }
+                        
+                        const imgUrls = EMBEDDED_DATA.imageUrls || {};
+                        
+                        // 이미지 먼저 설정
                         if (EMBEDDED_DATA.imageUrls) {
-                            setImageUrls(EMBEDDED_DATA.imageUrls);
+                            setImageUrls(imgUrls);
                         }
+                        
+                        // contents를 HTML로 포맷팅
+                        if (EMBEDDED_DATA.contents) {
+                            const formattedContents = {};
+                            Object.keys(EMBEDDED_DATA.contents).forEach(key => {
+                                const item = EMBEDDED_DATA.contents[key];
+                                if (item && item.content) {
+                                    formattedContents[key] = {
+                                        title: item.title,
+                                        content: `<div class="smart-content fade-in">${formatTextToHtml(item.content, imgUrls)}</div>`
+                                    };
+                                }
+                            });
+                            setContents(formattedContents);
+                            
+                            // IndexedDB에 포맷팅된 버전 저장
+                            await IDB.put('wb_contents_v41', formattedContents);
+                            await IDB.put('wb_images_v41', imgUrls);
+                        }
+                        
                         setAutoLoadStatus('success');
                         setIsLoaded(true);
                         return;
